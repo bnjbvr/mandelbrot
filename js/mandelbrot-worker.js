@@ -85,6 +85,215 @@ function mapColorAndSetPixel (x, y, value) {
   image_buffer[index+3] = 255;
 }
 
+function setPixel2(index, r, g, b) {
+    image_buffer[index]   = r;
+    image_buffer[index+1] = g;
+    image_buffer[index+2] = b;
+    image_buffer[index+3] = 255;
+}
+
+function asmjsModuleX4(global, imp) {
+    "use asm";
+    var setPixel2 = imp.setPixel2;
+    var toF = global.Math.fround;
+    var i4 = global.SIMD.int32x4;
+    var f4 = global.SIMD.float32x4;
+    var i4add = i4.add;
+    var i4and = i4.and;
+    var f4add = f4.add;
+    var f4sub = f4.sub;
+    var f4mul = f4.mul;
+    var f4lessThanOrEqual = f4.lessThanOrEqual
+    const max_iterations = 100;
+    var imul=global.Math.imul;
+
+    function mandelx4(xf, yf, yd) {
+	xf = toF(xf);
+	yf = toF(yf);
+	yd = toF(yd);
+	var c_re4  = f4(0.0,0.0,0.0,0.0);
+	var c_im4  = f4(0.0,0.0,0.0,0.0);
+	var z_re4  = f4(0.0,0.0,0.0,0.0);
+	var z_im4  = f4(0.0,0.0,0.0,0.0);
+	var four4  = f4(4.0,4.0,4.0,4.0);
+	var two4   = f4(2.0,2.0,2.0,2.0);
+	var count4 = i4(0,0,0,0);
+	var one4   = i4(1,1,1,1);
+	var z_re24 = f4(0.0,0.0,0.0,0.0);
+	var z_im24 = f4(0.0,0.0,0.0,0.0);
+	var new_re4 = f4(0.0,0.0,0.0,0.0);
+	var new_im4 = f4(0.0,0.0,0.0,0.0);
+	var i = 0;
+	var mi4 = i4(0,0,0,0);
+
+        c_re4 = f4(xf, xf, xf, xf);
+        c_im4 = f4(yf, toF(yd + yf), toF(yd + toF(yd + yf)), toF(yd + toF(yd + toF(yd + yf))));
+	
+	z_re4  = c_re4;
+	z_im4  = c_im4;
+
+	for (i = 0; (i | 0) < (max_iterations | 0); i = (i + 1) | 0) {
+	    z_re24 = f4mul(z_re4, z_re4);
+	    z_im24 = f4mul(z_im4, z_im4);
+
+	    mi4 = f4lessThanOrEqual(f4add(z_re24, z_im24), four4);
+	    // If all 4 values are greater than 4.0, there's no reason to continue
+	    // if (mi4.signMask === 0x00) {
+	    //	break;
+	    // }
+
+	    new_re4 = f4sub(z_re24, z_im24);
+	    new_im4 = f4mul(f4mul(two4, z_re4), z_im4);
+	    z_re4   = f4add(c_re4, new_re4);
+	    z_im4   = f4add(c_im4, new_im4);
+	    count4  = i4add(count4, i4and(mi4, one4));
+	}
+	return i4(count4);
+    }
+
+    function mapColorAndSetPixel (x, y, _width, value) {
+	x = x | 0;
+	y = y | 0;
+	_width = _width | 0;
+	value = value | 0;
+	var rgb = 0, r = 0, g = 0, b = 0;;
+	var index = 0;
+	index = (((imul((_width >>> 0), (y >>> 0)) + x) | 0) * 4) | 0;
+	if ((value | 0) == (max_iterations | 0)) {
+	    r = 0;
+	    g = 0;
+	    b = 0;
+	} else {
+	    rgb = ~~toF(toF(toF(toF(value >>> 0) * toF(0xffff >>> 0)) / toF(max_iterations >>> 0)) * toF(0xff >>> 0));
+	    r = rgb & 0xff;
+	    g = (rgb >>> 8) & 0xff;
+	    b = (rgb >>> 16) & 0xff;
+	}
+	setPixel2(index | 0, r | 0, g | 0, b |0);
+    }
+    
+    function mandelx4Column(x, height, _width, xf, yf, yd) {
+	x = x | 0;
+	height = height | 0;
+	_width = _width | 0;
+	xf = toF(xf);
+	yf = toF(yf);
+	yd = toF(yd);
+	var y = 0;
+	var ydx4 = toF(0)
+        var m4 = i4(0,0,0,0);
+	ydx4 = toF(yd * toF(4.0));
+	for (y = 0; (y | 0) < (height | 0); y = (y + 4) | 0) {
+            m4   = i4(mandelx4(toF(xf), toF(yf), toF(yd)));
+            mapColorAndSetPixel(x | 0, y | 0,   _width, m4.x);
+            mapColorAndSetPixel(x | 0, (y + 1) | 0, _width, m4.y);
+            mapColorAndSetPixel(x | 0, (y + 2) | 0, _width, m4.z);
+            mapColorAndSetPixel(x | 0, (y + 3) | 0, _width, m4.w);
+            yf = toF(yf + ydx4);
+	}
+    }
+
+    return mandelx4Column;
+}
+
+var mandelx4Column = asmjsModuleX4(this, {setPixel2: setPixel2});
+
+function asmjsModuleX1(global, imp) {
+    "use asm";
+    var setPixel2 = imp.setPixel2;
+    var toF = global.Math.fround;
+    var i4 = global.SIMD.int32x4;
+    var f4 = global.SIMD.float32x4;
+    var i4add = i4.add;
+    var i4and = i4.and;
+    var f4add = f4.add;
+    var f4sub = f4.sub;
+    var f4mul = f4.mul;
+    var f4lessThanOrEqual = f4.lessThanOrEqual
+    const max_iterations = 100;
+    var imul=global.Math.imul;
+
+    function mandelx1(xf, yf, yd) {
+	xf = toF(xf);
+	yf = toF(yf);
+	yd = toF(yd);
+	var z_re  = toF(0.0);
+	var z_im  = toF(0.0);
+	var count = 0;
+	var z_re2 = toF(0.0);
+	var z_im2 = toF(0.0);
+	var new_re = toF(0.0);
+	var new_im = toF(0.0);
+	var i = 0;
+	var mi = 0;
+
+	z_re  = xf;
+	z_im  = yf;
+
+	for (i = 0; (i | 0) < (max_iterations | 0); i = (i + 1) | 0) {
+	    z_re2 = toF(z_re * z_re);
+	    z_im2 = toF(z_im * z_im);
+
+	    mi = toF(z_re2 + z_im2) <= toF(4.0) ? 1 : 0;
+	    // ?? To be fair, might want to disable this early-out.
+	    // if ((mi | 0) == 0) break;
+
+	    // Alternative, and below for the counter:
+	    // if (toF(z_re2 + z_im2) > toF(4.0)) break;
+
+	    new_re = toF(z_re2 - z_im2);
+	    new_im = toF(toF(z_re * toF(2.0)) * z_im);
+	    z_re   = toF(xf + new_re);
+	    z_im   = toF(yf + new_im);
+	    count  = (count + mi) | 0;
+	    // Alternative.
+	    // count  = (count + 1) | 0;
+	}
+	return count | 0;
+    }
+
+    function mapColorAndSetPixel (x, y, _width, value) {
+	x = x | 0;
+	y = y | 0;
+	_width = _width | 0;
+	value = value | 0;
+	var rgb = 0, r = 0, g = 0, b = 0;;
+	var index = 0;
+	index = (((imul((_width >>> 0), (y >>> 0)) + x) | 0) * 4) | 0;
+	if ((value | 0) == (max_iterations | 0)) {
+	    r = 0;
+	    g = 0;
+	    b = 0;
+	} else {
+	    rgb = ~~toF(toF(toF(toF(value >>> 0) * toF(0xffff >>> 0)) / toF(max_iterations >>> 0)) * toF(0xff >>> 0));
+	    r = rgb & 0xff;
+	    g = (rgb >>> 8) & 0xff;
+	    b = (rgb >>> 16) & 0xff;
+	}
+	setPixel2(index | 0, r | 0, g | 0, b |0);
+    }
+    
+    function mandelx1Column(x, height, _width, xf, yf, yd) {
+	x = x | 0;
+	height = height | 0;
+	_width = _width | 0;
+	xf = toF(xf);
+	yf = toF(yf);
+	yd = toF(yd);
+	var y = 0;
+        var m4 = 0;
+	for (y = 0; (y | 0) < (height | 0); y = (y + 1) | 0) {
+            m4   = mandelx1(toF(xf), toF(yf), toF(yd)) | 0;
+            mapColorAndSetPixel(x | 0, y | 0,   _width, m4);
+            yf = toF(yf + yd);
+	}
+    }
+
+    return mandelx1Column;
+}
+
+var mandelx1Column = asmjsModuleX1(this, {setPixel2: setPixel2});
+
 function drawMandelbrot (params) {
   var width        = params.width;
   var height       = params.height;
@@ -100,26 +309,10 @@ function drawMandelbrot (params) {
   var xf = x0;
   for (var x = 0; x < width; ++x) {
     var yf = y0;
-    if (use_simd) {
-      var ydx4 = 4*yd;
-      for (var y = 0; y < height; y += 4) {
-        var xf4 = SIMD.float32x4(xf, xf, xf, xf);
-        var yf4 = SIMD.float32x4(yf, yf+yd, yf+yd+yd, yf+yd+yd+yd);
-        var m4   = mandelx4 (xf4, yf4);
-        mapColorAndSetPixel (x, y,   m4.x);
-        mapColorAndSetPixel (x, y+1, m4.y);
-        mapColorAndSetPixel (x, y+2, m4.z);
-        mapColorAndSetPixel (x, y+3, m4.w);
-        yf += ydx4;
-      }
-    }
-    else {
-      for (var y = 0; y < height; ++y) {
-        var m = mandelx1 (xf, yf);
-        mapColorAndSetPixel (x, y, m);
-        yf += yd;
-      }
-    }
+    if (use_simd)
+	mandelx4Column(x, height, width, xf, yf, yd);
+    else
+	mandelx1Column(x, height, width, xf, yf, yd);
     xf += xd;
   }
 }
